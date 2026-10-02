@@ -77,49 +77,60 @@ async def write_2(page):
 
 async def write_3(page):
     await page.locator("#stepTitle").filter(
-        has_text="남에 대한 평가는 나에 대한 평가").wait_for(state="visible", timeout=30000)
-    name = pd.read_csv(r"csv\Name.csv",encoding="utf-8-sig",header=None)
+        has_text="남에 대한 평가는 나에 대한 평가"
+    ).wait_for(state="visible", timeout=30000)
+
+    name = pd.read_csv(r"csv\Name.csv", encoding="utf-8-sig", header=None)
     csv4 = pd.read_csv(r"csv\4.csv", encoding="utf-8", header=None)
-    names = name.iloc[:, 0].dropna().astype(str).tolist()
-    print("[INFO] Write_3")
-    print("0 : 제외하지 않음")
-    for i, person in enumerate(names, start=1):
-        print(f"{i} : {person}")
-    number = int(input("제외할 번호: "))
-    if number < 0 or number > len(names):
-        print("잘못된 번호입니다.")
+
+    # 이름 3개 고정
+    names = name.iloc[:, 0].dropna().astype(str).tolist()[:3]
+
+    if len(names) < 3:
+        print("이름이 3개 미만입니다.")
         return
-    cludemember = names.copy()
-    if number != 0:
-        cludemember.pop(number - 1)
-    print("입력 대상:", cludemember)
+
+    print("[INFO] Write_3")
+    print("입력 대상:", names)
+
     rows = page.locator('[id^="recognition-peer-"]')
-    while await rows.count() < len(cludemember):
+
+    # 입력 행을 3개로 맞추기
+    while await rows.count() < 3:
         count = await rows.count()
         await page.locator("#recognitionAddRow").click()
-        await expect(rows).to_have_count(count + 1,timeout=10000)
-    while await rows.count() > len(cludemember):
+        await expect(rows).to_have_count(count + 1, timeout=10000)
+
+    while await rows.count() > 3:
         count = await rows.count()
         await page.locator(".recognition-row-remove").last.click()
-        await expect(rows).to_have_count(count - 1,timeout=10000)
-    for i, person in enumerate(cludemember):
+        await expect(rows).to_have_count(count - 1, timeout=10000)
+
+    # 3명 모두 입력
+    for i, person in enumerate(names):
         await page.locator(f"#recognition-peer-{i}").fill(person)
-        await page.locator(
-            f"#recognition-positive-{i}").fill(str(csv4.iloc[random.randrange(len(csv4)), 0]))
+        await page.locator(f"#recognition-positive-{i}").fill(
+            str(csv4.iloc[random.randrange(len(csv4)), 0])
+        )
+
     await write_4(page)
 
+
 async def write_4(page):
-    await page.locator("#recognition-received-0").wait_for(state="visible", timeout=30000)
-    csv5 = pd.read_csv(r"csv\5.csv",encoding="utf-8-sig", header=None)
+    await page.locator("#recognition-received-0").wait_for(
+        state="visible", timeout=30000
+    )
+    csv5 = pd.read_csv(r"csv\5.csv", encoding="utf-8-sig", header=None)
     sentences = csv5.iloc[:, 0].dropna().astype(str).tolist()
     if sentences and sentences[0] == "문장":
         sentences.pop(0)
     selected = random.sample(sentences, 3)
+
     for i, sentence in enumerate(selected):
         await page.locator(f"#recognition-received-{i}").fill(sentence)
-        await page.get_by_role("button", name="기록하고 다음").click()
-    await write_final(page)
+    await page.get_by_role("button", name="기록하고 다음").click()
     print("[INFO] Write_4")
+    await write_final(page)
 
 # 마지막 긍정 목표
 async def write_final(page):
