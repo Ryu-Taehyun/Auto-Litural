@@ -1,4 +1,5 @@
 @echo off
+chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
 
@@ -11,7 +12,9 @@ if not exist ".venv\Scripts\python.exe" (
 call ".venv\Scripts\activate.bat" || goto :error
 
 rem Install packages (already-installed ones are skipped)
+echo [setup] 패키지 설치 중입니다...
 python -m pip install -q --disable-pip-version-check -r requirements.txt || goto :error
+echo [setup] 패키지 설치 완료
 
 rem Start Chrome in debugging mode if port 9222 is not already open
 set "CHROME=C:\Program Files\Google\Chrome\Application\chrome.exe"
