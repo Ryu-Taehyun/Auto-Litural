@@ -6,6 +6,7 @@ import random
 import pandas as pd
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, expect
+from chrome import ensure_chrome
 
 url = "https://aleph-omega.vercel.app/login"
 
@@ -143,4 +144,5 @@ async def write_final(page):
     await page.locator("#planFirstAction").fill(str(csv7.iloc[random.randrange(len(csv7)), 0]))
     # await page.get_by_role("button", name="계획 저장하고 아침 마치기").click()
 
+ensure_chrome()
 asyncio.run(open_page(url))
