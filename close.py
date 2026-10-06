@@ -4,7 +4,7 @@ import asyncio
 import random
 import pandas as pd
 from playwright.async_api import async_playwright, expect
-from chrome import ensure_chrome
+from chrome import ensure_chrome, login
 
 url = "https://aleph-omega.vercel.app/login"
 
@@ -48,13 +48,7 @@ async def open_page(url, peers):
     async with async_playwright() as p:
         browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
         page = await browser.new_page()
-        await page.goto(url)
-
-        await page.locator("button#googleBtn").click()
-        print("[INFO] LOGIN WAIT")
-        await page.wait_for_url("**/tutorial**", timeout=0)
-
-        print("[INFO] LOGIN SUCCESS")
+        await login(page, url)
         await find_button(page, peers)
 
         await asyncio.Event().wait()

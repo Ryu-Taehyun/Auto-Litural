@@ -6,7 +6,7 @@ import random
 import pandas as pd
 from bs4 import BeautifulSoup
 from playwright.async_api import async_playwright, expect
-from chrome import ensure_chrome
+from chrome import ensure_chrome, login
 
 url = "https://aleph-omega.vercel.app/login"
 
@@ -15,13 +15,7 @@ async def open_page(url):
     async with async_playwright() as p:
         browser = await p.chromium.connect_over_cdp("http://127.0.0.1:9222")
         page = await browser.new_page()
-        await page.goto(url)
-
-        await page.locator("button#googleBtn").click()
-        print("[INFO] LOGIN WAIT")
-        await page.wait_for_url("**/tutorial**", timeout=0)
-
-        print("[INFO] LOGIN SUCCESS")
+        await login(page, url)
         await find_button(page)
 
         await asyncio.Event().wait()
@@ -30,7 +24,15 @@ async def open_page(url):
 async def find_button(page):
     await page.locator("summary", has_text="학습 메뉴").click()
     await page.locator('a[data-nav-key="ritual-open"]').click()
-    await page.get_by_role("button", name="기록 수정하기").click()
+
+    # 이미 기록이 있으면 수정 모드로 진입 (오늘 첫 기록이면 버튼이 없음)
+    edit_btn = page.get_by_role("button", name="기록 수정하기")
+    try:
+        await edit_btn.wait_for(state="visible", timeout=3000)
+        await edit_btn.click()
+    except Exception:
+        pass
+
     await radio_check(page)
 
 # 체크박스
@@ -48,6 +50,10 @@ async def radio_check(page):
     )
     await radio2.check()
 
+    # 호흡 안내: "5분 시작" → "여기까지"를 눌러야 다음 단계로 넘어갈 수 있음
+    await page.locator("#breathStartBtn").click()
+    await page.locator("#breathStopBtn").click()
+
     print("[INFO] CheckBox")
     await page.get_by_role("button", name="기록하고 다음").click()
     await write_1(page)
@@ -58,6 +64,7 @@ async def write_1(page):
     has_text="편안했던 장면 하나 떠올리기").wait_for(state="visible",timeout=30000)
     name = pd.read_csv(r"csv\Title.csv", encoding="utf-8", header=None)
     print("[INFO] Write_1")
+    await page.locator("#memoryMode-scene").check()
     await page.locator("#memory").fill(str(name.iloc[random.randrange(len(name)), 0]))
     await page.get_by_role("button", name="기록하고 다음").click()
     await write_2(page)
