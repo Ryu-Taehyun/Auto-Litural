@@ -1,6 +1,6 @@
 # Auto-Litural
 
-** 사용해서 로그. LLM에 탐지되도 전 책임 안집니다... **
+**사용해서 로그. LLM에 탐지되도 전 책임 안집니다...**
 
 [aleph-omega](https://aleph-omega.vercel.app) 의 아침·마무리 리추얼 입력을 자동으로 채워 주는 Playwright 스크립트입니다.
 `csv/` 폴더의 문장에서 무작위로 골라 각 입력칸을 채웁니다.
