@@ -1,4 +1,4 @@
 requests
 pandas
 beautifulsoup4
-playwright
+playwright>=1.51

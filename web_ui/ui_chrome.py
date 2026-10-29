@@ -10,6 +10,10 @@ PORT = 9223
 CDP_URL = f'http://127.0.0.1:{PORT}'
 
 
+def profile_path():
+    return Path(os.environ['LOCALAPPDATA']) / 'AutoLituralWebChrome'
+
+
 def is_open():
     try:
         opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -26,7 +30,7 @@ def ensure_chrome(timeout=20):
     from chrome import CHROME
     if not Path(CHROME).is_file():
         raise RuntimeError('Chrome이 없습니다. chrome.py의 CHROME 설치 경로를 확인하세요.')
-    profile = Path(os.environ['LOCALAPPDATA']) / 'AutoLituralWebChrome'
+    profile = profile_path()
     subprocess.Popen([CHROME, f'--remote-debugging-port={PORT}',
                       '--remote-debugging-address=127.0.0.1', f'--user-data-dir={profile}',
                       '--no-first-run', '--no-default-browser-check'])

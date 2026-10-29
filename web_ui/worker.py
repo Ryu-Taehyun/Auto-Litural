@@ -79,8 +79,83 @@ def authenticated(url):
         path == '/cortex' or path.startswith('/cortex/'))
 
 
+def existing_page(browser):
+    """Prefer a logged-in portal tab over tutorial, login and unrelated tabs."""
+    candidates = []
+    for context in browser.contexts:
+        for index, page in enumerate(context.pages):
+            if page.is_closed():
+                continue
+            parsed = urlsplit(page.url)
+            if authenticated(page.url):
+                score = 100 if parsed.path.startswith('/cortex') else 90
+            elif parsed.scheme == 'https' and parsed.hostname == 'accounts.google.com':
+                score = 70
+            elif parsed.scheme == 'https' and parsed.netloc == 'aleph-omega.vercel.app':
+                score = 50
+            else:
+                continue
+            candidates.append((score, index, context, page))
+    if not candidates:
+        return (browser.contexts[0], None) if browser.contexts else (None, None)
+    _, _, context, page = max(candidates, key=lambda item: item[:2])
+    return context, page
+
+
+@contextlib.asynccontextmanager
+async def headless_page(chromium, source):
+    """Copy all relevant web session stores in memory; leave the source intact."""
+    parsed = urlsplit(source.url)
+    if not authenticated(source.url):
+        raise RuntimeError('로그인한 리추얼 탭이 없습니다. 로그인 열기로 로그인을 완료한 뒤 헤드리스를 실행하세요.')
+    origin = f'{parsed.scheme}://{parsed.netloc}'
+    state = await source.context.storage_state(indexed_db=True)
+    state['origins'] = [entry for entry in state.get('origins', []) if entry['origin'] == origin]
+    state['cookies'] = [cookie for cookie in state.get('cookies', [])
+                        if parsed.hostname == cookie['domain'].lstrip('.') or
+                        parsed.hostname.endswith('.' + cookie['domain'].lstrip('.'))]
+    tab_state = await source.evaluate('() => Object.fromEntries(Object.entries(sessionStorage))')
+    hidden = await chromium.launch(channel='chrome', headless=True)
+    try:
+        context = await hidden.new_context(storage_state=state, viewport={'width': 1280, 'height': 900})
+        await context.add_init_script('(()=>{const origin=' + json.dumps(origin) + ';const entries=' +
+                                      json.dumps(tab_state, ensure_ascii=True) +
+                                      ';if(location.origin===origin){for(const [k,v] of Object.entries(entries)){if(sessionStorage.getItem(k)===null)sessionStorage.setItem(k,v)}}})()')
+        del state, tab_state
+        page = await context.new_page()
+        # Start at the existing portal path, never restart OAuth through /login.
+        await page.goto(origin + parsed.path, wait_until='domcontentloaded', timeout=45000)
+        yield page
+    finally:
+        await hidden.close()
+
+
+@contextlib.asynccontextmanager
+async def persistent_headless_page(chromium, profile):
+    if not profile.exists():
+        raise RuntimeError('저장된 웹 UI 로그인 프로필이 없습니다. 로그인 열기에서 먼저 로그인하세요.')
+    from playwright.async_api import Error as PlaywrightError
+    try:
+        context = await chromium.launch_persistent_context(str(profile), channel='chrome', headless=True,
+                                                          viewport={'width': 1280, 'height': 900})
+    except PlaywrightError:
+        raise RuntimeError('저장된 프로필을 헤드리스로 열지 못했습니다. 같은 전용 프로필을 사용하는 Chrome이 남아 있는지 확인하고 다시 실행하세요.') from None
+    try:
+        _, page = existing_page(types.SimpleNamespace(contexts=[context]))
+        if page is None:
+            page = context.pages[0] if context.pages else await context.new_page()
+        if not authenticated(page.url):
+            await page.goto('https://aleph-omega.vercel.app/cortex', wait_until='domcontentloaded', timeout=45000)
+        yield page
+    finally:
+        await context.close()
+
+
 async def login(page, headless=False):
     from playwright.async_api import TimeoutError as PlaywrightTimeout
+    if authenticated(page.url):
+        emit(status='running', phase='기존 로그인 탭 재사용', message='로그인한 탭을 그대로 사용합니다. 로그인 페이지를 다시 열지 않습니다.')
+        return
     account_denied = False
 
     def failed_request(request):
@@ -112,9 +187,11 @@ async def login(page, headless=False):
     page.on('response', auth_response)
     page.on('framenavigated', navigation)
     try:
-        emit(status='waiting_login', phase='로그인 페이지를 불러오는 중', message='로그인 페이지 요청을 시작합니다.')
+        resume_google = urlsplit(page.url).hostname == 'accounts.google.com'
+        emit(status='waiting_login', phase='로그인 상태를 확인하는 중', message='기존 Google 인증 화면을 계속 사용합니다.' if resume_google else '로그인 페이지 요청을 시작합니다.')
         try:
-            await page.goto('https://aleph-omega.vercel.app/login', wait_until='domcontentloaded', timeout=45000)
+            if not resume_google:
+                await page.goto('https://aleph-omega.vercel.app/login', wait_until='domcontentloaded', timeout=45000)
         except PlaywrightTimeout:
             # An unrelated resource can delay DOMContentLoaded. Only continue
             # when the intended origin and its actual login button are present.
@@ -211,12 +288,29 @@ async def preview(page):
     emit(preview=base64.b64encode(image).decode('ascii'))
 
 
+async def ritual_menu(page, headless=False):
+    emit(status='running', phase='로그인한 화면의 리추얼 메뉴를 확인하는 중')
+    from playwright.async_api import TimeoutError as PlaywrightTimeout
+    try:
+        await page.locator('summary').filter(has_text='학습 메뉴').wait_for(state='visible', timeout=15000)
+    except PlaywrightTimeout:
+        if headless:
+            await preview(page)
+        if urlsplit(page.url).path.startswith('/tutorial'):
+            raise RuntimeError('로그인은 완료됐지만 튜토리얼 화면입니다. 열린 Chrome에서 튜토리얼을 마치고 학습 메뉴가 보이는 화면에서 다시 실행하세요.') from None
+        if headless and (await page.locator('#googleBtn').is_visible() or
+                         await page.get_by_role('heading', name='로그인이 필요합니다.', exact=True).is_visible()):
+            raise RuntimeError('저장된 로그인 세션이 없거나 만료됐습니다. 로그인 열기에서 다시 로그인하고 학습 메뉴까지 이동한 뒤 실행하세요.') from None
+        raise RuntimeError('로그인 화면에서 학습 메뉴를 찾지 못했습니다. 결과 화면이나 열린 Chrome에서 로그인 상태와 사이트 메뉴 변경 여부를 확인하세요.') from None
+
+
 async def fill_ritual(page, config, commands):
     mode = config['mode']
     module = load_automation(ROOT / ('main.py' if mode == 'morning' else 'close.py'))
     total = instrument(module, mode)
     delay = config.get('delay_ms', 300)
     emit(message=f'입력·클릭 간 딜레이: {delay}ms')
+    await ritual_menu(page, headless=config.get('headless', False))
     with input_delay(delay):
         await module.find_button(page, config['names'])
     if not config.get('headless'):
@@ -243,30 +337,31 @@ async def execute(config, commands):
     from playwright.async_api import async_playwright
     headless = config.get('headless', False)
     emit(phase='Chrome 연결 준비', message='웹 UI 전용 AutoLituralWebChrome 프로필을 사용합니다. 기존 ChromeDebug는 보존됩니다.')
-    if headless:
-        if not await asyncio.to_thread(chrome.is_open):
-            raise RuntimeError('먼저 로그인 열기로 Chrome을 열고 로그인하세요. 헤드리스는 기존 세션이 필요합니다.')
-    else:
+    source_running = await asyncio.to_thread(chrome.is_open) if headless else True
+    if not headless:
         await asyncio.to_thread(chrome.ensure_chrome)
     async with async_playwright() as p:
+        if headless and not source_running:
+            emit(message='로그인 Chrome이 닫혀 있어 저장된 전용 프로필을 헤드리스로 직접 사용합니다.')
+            async with persistent_headless_page(p.chromium, chrome.profile_path()) as page:
+                await login(page, headless=True)
+                await fill_ritual(page, config, commands)
+            return
         browser = await p.chromium.connect_over_cdp(chrome.CDP_URL, timeout=15000)
         if not browser.contexts:
             raise RuntimeError('Chrome 기본 프로필에 연결하지 못했습니다.')
-        context = browser.contexts[0]
+        context, selected = existing_page(browser)
         if headless:
-            # Cookies and localStorage stay in memory, never exported to disk.
-            state = await context.storage_state()
-            hidden = await p.chromium.launch(channel='chrome', headless=True)
-            try:
-                isolated = await hidden.new_context(storage_state=state, viewport={'width': 1280, 'height': 900})
-                del state
-                page = await isolated.new_page()
+            if selected is None or not authenticated(selected.url):
+                raise RuntimeError('로그인한 탭을 찾지 못했습니다. 로그인 열기에서 로그인하고 학습 메뉴를 확인한 뒤 다시 실행하세요.')
+            await ritual_menu(selected)
+            emit(message='기존 로그인 탭의 쿠키·localStorage·sessionStorage·IndexedDB를 메모리로 복사합니다.')
+            async with headless_page(p.chromium, selected) as page:
                 await login(page, headless=True)
                 await fill_ritual(page, config, commands)
-            finally:
-                await hidden.close()
             return
-        page = await context.new_page()
+        page = selected if selected is not None else await context.new_page()
+        await page.bring_to_front()
         await login(page)
         if config['mode'] == 'login':
             emit(status='logged_in', phase='로그인 확인 완료', message='로그인 확인이 끝났습니다. 리추얼을 실행할 수 있습니다.')

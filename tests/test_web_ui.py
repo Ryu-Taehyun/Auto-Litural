@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -28,6 +29,10 @@ ui_chrome = load('ui_chrome', 'ui_chrome.py')
 
 
 class ChromeProfileTests(unittest.TestCase):
+    def test_profile_path_matches_visible_and_persistent_headless(self):
+        with patch.dict(os.environ,{'LOCALAPPDATA':str(ROOT/'test-appdata')}):
+            self.assertEqual(ui_chrome.profile_path(),ROOT/'test-appdata'/'AutoLituralWebChrome')
+
     def test_only_accept_chrome_debug_endpoint_without_system_proxy(self):
         for content, expected in ((b'{"Browser":"Chrome/130"}',True), (b'{}',False), (b'not-json',False)):
             with patch.object(ui_chrome.urllib.request,'build_opener') as make:
@@ -208,6 +213,28 @@ class Page:
 
 
 class AdapterTests(unittest.TestCase):
+    def test_existing_portal_tab_is_reused_before_tutorial_or_login(self):
+        def page(url):
+            return SimpleNamespace(url=url,is_closed=lambda:False)
+        login=page('https://aleph-omega.vercel.app/login')
+        tutorial=page('https://aleph-omega.vercel.app/tutorial')
+        cortex=page('https://aleph-omega.vercel.app/cortex.html')
+        google=page('https://accounts.google.com/v3/signin/identifier')
+        context=SimpleNamespace(pages=[cortex,login,tutorial,google])
+        selected_context,selected=worker.existing_page(SimpleNamespace(contexts=[context]))
+        self.assertIs(selected_context,context)
+        self.assertIs(selected,cortex)
+
+    def test_login_does_not_navigate_authenticated_tab(self):
+        page=SimpleNamespace(url='https://aleph-omega.vercel.app/cortex')
+        with patch.object(worker,'emit'):
+            # No goto/new_page/locator methods: calling any would fail this test.
+            asyncio.run(worker.login(page))
+
+    def test_unrelated_tabs_are_not_repurposed(self):
+        context=SimpleNamespace(pages=[SimpleNamespace(url='https://example.com',is_closed=lambda:False)])
+        self.assertEqual(worker.existing_page(SimpleNamespace(contexts=[context])),(context,None))
+
     def test_auth_url_is_exact_origin(self):
         self.assertTrue(worker.authenticated('https://aleph-omega.vercel.app/cortex'))
         self.assertFalse(worker.authenticated('https://evil.example/cortex'))
