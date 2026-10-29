@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="control-token" content="__CONTROL_TOKEN__">
+  <title>Auto-Litural · 나의 하루를 정돈하는 시간</title>
+  <link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script>
+</head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="/" aria-label="Auto-Litural 홈"><span class="brand-icon">a<span>↗</span></span> Auto-Litural</a>
+  <div class="nav-label">MY WORKSPACE</div><div class="nav-current"><span>◉</span> 리추얼 대시보드 <span class="nav-dot"></span></div>
+  <div class="sidebar-note"><div class="small-sun">✳</div><h3>조금 더 가벼운 하루.</h3><p>반복 입력은 맡기고,<br>나를 돌아보는 데 집중하세요.</p></div>
+  <div class="local-label"><i></i> 이 컴퓨터에서만 실행 <small>LOCAL WORKSPACE · 127.0.0.1</small></div>
+</aside>
+<main>
+  <header><div class="breadcrumb">워크스페이스 <span>/</span> 리추얼</div><span class="header-tag">PYTHON + PLAYWRIGHT</span></header>
+  <section class="intro"><div><div class="eyebrow">A MOMENT FOR YOURSELF</div><h1>나의 하루를 정돈하는 시간<span>.</span></h1><p>하루의 시작과 마무리, 익숙한 리추얼을 조금 더 간편하게.</p></div><div class="intro-art" aria-hidden="true">✳</div></section>
+  <div class="notice"><span class="notice-icon">↗</span><div><strong>마지막 확인과 저장은 직접 해 주세요.</strong><p>CSV 문장으로 입력을 채웁니다. 기존 기록이 있으면 수정 화면으로 들어갑니다.</p></div><span class="pill">직접 저장</span></div>
+  <div class="workspace-grid">
+    <section class="card setup"><div class="section-top"><h2>리추얼 준비</h2><span class="step-label">01 — SET UP</span></div>
+      <div class="login-box"><div class="login-symbol">G</div><div><strong>Google 로그인</strong><p>별도 Chrome 창에서 직접 로그인합니다.</p></div><button id="login" class="button light" type="button">로그인 열기 <span>↗</span></button></div>
+      <form id="ritual-form"><fieldset id="fields"><legend>실행할 리추얼</legend><div class="ritual-options">
+        <label class="ritual-option"><input type="radio" name="mode" value="morning" checked><span class="mode-icon">☀</span><strong>아침 리추얼</strong><small>오늘의 방향을 정해요</small><span class="radio-dot"></span></label>
+        <label class="ritual-option"><input type="radio" name="mode" value="close"><span class="mode-icon moon">☾</span><strong>마무리 리추얼</strong><small>오늘의 마음을 돌아봐요</small><span class="radio-dot"></span></label>
+      </div><div class="name-label"><label for="names">함께할 동료 이름</label><span>1–3명</span></div>
+      <input id="names" name="names" maxlength="120" placeholder="예: 홍길동, 김하늘" autocomplete="off" required aria-describedby="names-hint"><p id="names-hint" class="hint">이름 사이는 쉼표 또는 띄어쓰기로 구분해 주세요.</p>
+      <div class="run-options"><label class="headless-toggle"><input id="headless" type="checkbox"><span><strong>헤드리스 실행</strong><small>새 Chrome 창 없이 입력 · 먼저 로그인해 주세요</small></span></label>
+      <div class="delay-setting"><label for="delay">입력·클릭 사이 딜레이</label><div><input id="delay" type="number" min="0" max="3000" step="1" value="300" required><span>ms</span></div><small>0~3000ms · 1000ms = 1초</small></div></div>
+      <p id="mode-note" class="mode-note">기존 아침 리추얼의 호흡 단계는 시작 직후 종료됩니다.</p>
+      <button id="start" class="button primary" type="submit"><span>리추얼 실행하기</span><span>→</span></button>
+      </fieldset></form>
+      <div class="connection"><span>◌</span> 로그인 세션은 웹 UI 전용 Chrome 프로필을 사용합니다.</div>
+    </section>
+    <section class="card progress-card" aria-labelledby="progress-heading"><div class="section-top"><h2 id="progress-heading">진행상황</h2><span id="badge" class="badge">대기 중</span></div>
+      <div class="progress-main"><div id="status-icon" class="status-icon" aria-hidden="true">◷</div><h3 id="phase" role="status" aria-live="polite">준비되면 시작해 주세요</h3><p id="status-description">리추얼을 선택하고 동료 이름을 입력하세요.</p></div>
+      <div class="progress-label"><span id="progress-label">아직 시작하지 않았어요</span><strong id="percent">0%</strong></div>
+      <progress id="progress" max="100" value="0" aria-label="입력 진행률"></progress>
+      <ol id="steps" class="steps"><li>Chrome 연결</li><li>로그인 확인</li><li>리추얼 입력</li><li>직접 확인 · 저장</li></ol>
+      <button id="stop" class="button stop" type="button" disabled>■ <span>실행 중지</span></button><p class="hint stop-hint">중지하면 자동 입력만 멈춥니다. Chrome 창은 유지됩니다.</p>
+    </section>
+  </div>
+  <section id="preview-card" class="card preview-card" hidden><div class="section-top"><h2>헤드리스 결과 화면</h2><button id="save" type="button" class="button primary" disabled>확인한 내용 저장하기</button></div><p class="hint">입력 화면을 확인한 후 저장을 눌러 주세요. 저장 요청 후에는 결과 화면에서 성공 여부를 확인하세요.</p><img id="preview" alt="헤드리스 브라우저의 리추얼 결과 화면"><p id="preview-error" class="error" hidden></p></section>
+  <section class="card log-card"><div class="section-top"><div class="log-title"><h2>실행 로그</h2><span class="log-live"><i></i> LIVE</span></div><button id="download" type="button" class="text-button">로그 내려받기 ↓</button></div><div id="logs" class="logs" role="region" aria-label="실행 로그" tabindex="0"><div class="log-empty">실행하면 이곳에 진행 내역이 표시됩니다.</div></div></section>
+  <p id="error" class="error" role="alert" hidden></p>
+  <footer><span>Auto-Litural <span class="footer-dot">·</span> 나를 위한 작은 루틴</span><span>로컬 실행 <span class="footer-dot">/</span> 최종 저장은 직접</span></footer>
+</main>
+<dialog id="warning-dialog" aria-labelledby="warning-title" aria-describedby="warning-message"><form method="dialog"><div class="warning-icon" aria-hidden="true">!</div><p class="eyebrow">BEFORE YOU CONTINUE</p><h2 id="warning-title">실행 전 주의사항</h2><p id="warning-message">이 프로그램 사용으로 평가 점수 하락 등 불이익이 발생하더라도 개발자는 책임을 지지 않습니다.</p><p id="warning-detail">사용 여부와 입력 내용 확인에 대한 책임은 사용자에게 있습니다.</p><p id="warning-settings" class="warning-settings"></p><div class="dialog-actions"><button class="button light" value="cancel" autofocus>취소</button><button id="warning-confirm" class="button primary" value="confirm">확인하고 실행</button></div></form></dialog>
+</body></html>
+
