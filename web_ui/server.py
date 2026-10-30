@@ -31,14 +31,14 @@ class Jobs:
 
     def snapshot(self):
         with self.lock:
-            return {**self.state, 'active': self.proc is not None, 'preview_version': self.preview_version,
+            return {**self.state, 'speed_modes': ['humanize', 'instant', 'custom'], 'active': self.proc is not None, 'preview_version': self.preview_version,
                     'has_preview': self.preview is not None, 'logs': list(self.logs)}
 
     def log(self, message):
         self.serial += 1
         self.logs.append(dict(id=self.serial, time=time.strftime('%H:%M:%S'), message=str(message)[:1000]))
 
-    def start(self, mode, names, headless=False, delay_ms=300):
+    def start(self, mode, names, headless=False, delay_ms=300, speed_mode='custom'):
         with self.lock:
             if self.proc is not None:
                 raise ValueError('현재 작업이 끝난 뒤 다시 실행하세요.')
@@ -55,10 +55,10 @@ class Jobs:
             self.preview = None
             self.preview_version += 1
             self.state = dict(id=job_id, status='running', phase='Chrome 준비 중', step=0,
-                              total={'morning': 6, 'close': 3, 'login': 0}[mode], mode=mode, headless=headless)
+                              total={'morning': 6, 'close': 3, 'login': 0}[mode], mode=mode, headless=headless, speed_mode=speed_mode)
             self.log('작업을 시작했습니다. 최종 저장은 Chrome에서 직접 해 주세요.')
             try:
-                proc.stdin.write(json.dumps({'mode': mode, 'names': names, 'headless': headless, 'delay_ms': delay_ms}, ensure_ascii=False) + '\n')
+                proc.stdin.write(json.dumps({'mode': mode, 'names': names, 'headless': headless, 'delay_ms': delay_ms, 'speed_mode': speed_mode}, ensure_ascii=False) + '\n')
                 proc.stdin.flush()
             except (OSError, ValueError):
                 proc.kill()
@@ -212,6 +212,7 @@ def make_handler(jobs, port, token):
                     self.reply(200, preview, 'image/jpeg')
                 return
             files = {'/': ('index.html', 'text/html; charset=utf-8'),
+                     '/theme.js': ('theme.js', 'text/javascript; charset=utf-8'),
                      '/app.js': ('app.js', 'text/javascript; charset=utf-8'),
                      '/style.css': ('style.css', 'text/css; charset=utf-8')}
             item = files.get(self.path)
@@ -252,6 +253,9 @@ def make_handler(jobs, port, token):
                 raw = data.get('names', '')
                 headless = data.get('headless', False)
                 delay_ms = data.get('delay_ms', 300)
+                speed_mode = data.get('speed_mode', 'custom')
+                if not isinstance(speed_mode, str) or speed_mode not in ('humanize', 'instant', 'custom'):
+                    raise ValueError('입력 속도는 Humanize, Instant, 직접 설정 중 선택하세요.')
                 if type(headless) is not bool or type(delay_ms) is not int or not 0 <= delay_ms <= 3000:
                     raise ValueError('헤드리스는 켜기/끄기, 딜레이는 0~3000ms 정수로 설정하세요.')
                 if mode == 'login' and headless:
@@ -261,7 +265,7 @@ def make_handler(jobs, port, token):
                 names = raw.replace(',', ' ').split()
                 if mode != 'login' and (not 1 <= len(names) <= 3 or any(len(n) > 30 or any(ord(c) < 32 for c in n) for n in names)):
                     raise ValueError('이름은 1~3명, 각 30자 이내로 입력하세요.')
-                self.reply(200, jobs.start(mode, names if mode != 'login' else [], headless, delay_ms))
+                self.reply(200, jobs.start(mode, names if mode != 'login' else [], headless, delay_ms, speed_mode))
             except (ValueError, UnicodeError) as exc:
                 self.reply(400, {'error': str(exc)[:200]})
             except OSError:

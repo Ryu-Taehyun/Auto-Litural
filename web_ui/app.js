@@ -1,6 +1,36 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name="control-token"]').content;
+// An already-running older server cannot serve theme.js until restarted.
+// Keep the restart notice and stop controls usable during that transition.
+if (!window.AutoLituralTheme) {
+  const read = key => { try { return localStorage.getItem(key); } catch { return null; } };
+  const set = theme => {
+    if (!['light','dark'].includes(theme)) return;
+    document.documentElement.dataset.theme = theme;
+    try { localStorage.setItem('AutoLitural.theme',theme); } catch {}
+    const dark = theme === 'dark';
+    $('theme-toggle').setAttribute('aria-pressed',String(dark));
+    $('theme-toggle').setAttribute('aria-label',(dark ? '라이트 모드' : '다크 모드') + '로 전환');
+    $('theme-label').textContent = dark ? '라이트 모드' : '다크 모드';
+    $('theme-icon').textContent = dark ? '☀' : '☾';
+  };
+  window.AutoLituralTheme = {read,set};
+  set(read('AutoLitural.theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+}
+function selectedSpeed() { return document.querySelector('input[name="speed"]:checked').value; }
+function syncSpeed() {
+  const speed = selectedSpeed();
+  $('custom-delay').hidden = speed !== 'custom';
+  $('delay').disabled = speed !== 'custom';
+  $('speed-hint').textContent = ({humanize:'입력·클릭·체크마다 6~12초 사이에서 새로운 대기 시간을 무작위로 선택합니다. 대기 중에도 중지할 수 있습니다.',instant:'추가 대기 없이 진행합니다. 사이트 로딩과 입력 준비 시간은 기다립니다.',custom:'각 입력·클릭·체크 전에 지정한 시간만큼 기다립니다.'})[speed];
+  try { localStorage.setItem('AutoLitural.speed', speed); } catch {}
+}
+$('theme-toggle').addEventListener('click', () => window.AutoLituralTheme.set(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+const savedSpeed = window.AutoLituralTheme.read('AutoLitural.speed');
+if (['humanize','instant','custom'].includes(savedSpeed)) document.querySelector(`input[name="speed"][value="${savedSpeed}"]`).checked = true;
+document.querySelectorAll('input[name="speed"]').forEach(input => input.addEventListener('change', syncSpeed));
+syncSpeed();
 let latest = {logs: []};
 let pending = false;
 let connected = false;
@@ -9,17 +39,22 @@ let previewVersion = -1;
 let previewUrl = null;
 let previewReady = false;
 let showingWarning = false;
+let supportsSpeedModes = false;
 const busyStates = new Set(['running', 'waiting_login', 'stopping', 'saving', 'headless_review']);
 const labels = {idle:'대기 중', running:'실행 중', waiting_login:'로그인 대기', stopping:'중지 중', stopped:'중지됨', review:'확인 필요', headless_review:'결과 확인 대기', saving:'저장 요청 중', submitted:'결과 확인 필요', logged_in:'로그인 확인', error:'오류'};
 function error(message) { $('error').textContent = message; $('error').hidden = !message; }
 function controls() {
   const busy = latest.active || busyStates.has(latest.status) || pending || showingWarning;
-  $('fields').disabled = busy || !connected;
+  $('fields').disabled = busy || !connected || !supportsSpeedModes;
   $('login').disabled = busy || !connected;
   $('stop').disabled = !connected || pending || !latest.active || latest.status === 'stopping';
   $('save').disabled = !connected || pending || showingWarning || !previewReady || !latest.active || latest.status !== 'headless_review';
 }
 function render(state) {
+  const previouslySupported = supportsSpeedModes;
+  supportsSpeedModes = Array.isArray(state.speed_modes) && ['humanize','instant','custom'].every(mode => state.speed_modes.includes(mode));
+  if (!supportsSpeedModes) error('새 입력 속도 기능을 사용하려면 기존 실행 콘솔을 종료한 뒤 web.cmd를 다시 실행해 주세요.');
+  else if (!previouslySupported) error('');
   latest = state;
   $('badge').textContent = labels[state.status] || state.status;
   $('badge').className = 'badge' + (busyStates.has(state.status) ? ' active' : state.status === 'error' ? ' failed' : '');
@@ -110,9 +145,11 @@ $('ritual-form').addEventListener('submit', async event => {
   const names = raw.replaceAll(',', ' ').split(/\s+/u).filter(Boolean);
   if (names.length < 1 || names.length > 3 || names.some(n => n.length > 30)) { error('동료 이름을 1~3명, 각 30자 이내로 입력해 주세요.'); return; }
   const delay = Number($('delay').value);
-  if ($('delay').value === '' || !Number.isInteger(delay) || delay < 0 || delay > 3000) { error('딜레이를 0~3000ms 정수로 설정해 주세요.'); return; }
-  const config = {mode:document.querySelector('input[name="mode"]:checked').value,names:raw,headless:$('headless').checked,delay_ms:delay};
-  if (!await askWarning(false, `${config.headless ? '헤드리스' : 'Chrome 창'} 실행 · 딜레이 ${delay}ms${config.headless ? ' · 결과 화면에서 직접 저장' : ''}`)) return;
+  const speed = selectedSpeed();
+  if (speed === 'custom' && ($('delay').value === '' || !Number.isInteger(delay) || delay < 0 || delay > 3000)) { error('딜레이를 0~3000ms 정수로 설정해 주세요.'); return; }
+  const config = {mode:document.querySelector('input[name="mode"]:checked').value,names:raw,headless:$('headless').checked,delay_ms:speed === 'custom' ? delay : 0,speed_mode:speed};
+  const speedLabel = ({humanize:'Humanize · 6~12초 무작위 대기',instant:'Instant · 추가 대기 없음',custom:`직접 설정 · ${delay}ms`})[speed];
+  if (!await askWarning(false, `${config.headless ? '헤드리스' : 'Chrome 창'} 실행 · ${speedLabel}${config.headless ? ' · 결과 화면에서 직접 저장' : ''}`)) return;
   action('/api/start', config);
 });
 $('save').addEventListener('click', async () => { if (await askWarning(true)) action('/api/save',{}); });

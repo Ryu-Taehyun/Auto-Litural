@@ -4,7 +4,7 @@
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="control-token" content="__CONTROL_TOKEN__">
   <title>Auto-Litural · 나의 하루를 정돈하는 시간</title>
-  <link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script>
+  <script src="/theme.js"></script><link rel="stylesheet" href="/style.css"><script defer src="/app.js"></script>
 </head>
 <body>
 <aside class="sidebar">
@@ -14,7 +14,7 @@
   <div class="local-label"><i></i> 이 컴퓨터에서만 실행 <small>LOCAL WORKSPACE · 127.0.0.1</small></div>
 </aside>
 <main>
-  <header><div class="breadcrumb">워크스페이스 <span>/</span> 리추얼</div><span class="header-tag">PYTHON + PLAYWRIGHT</span></header>
+  <header><div class="breadcrumb">워크스페이스 <span>/</span> 리추얼</div><div class="header-actions"><span class="header-tag">PYTHON + PLAYWRIGHT</span><button id="theme-toggle" class="theme-toggle" type="button" aria-label="다크 모드로 전환" aria-pressed="false"><span id="theme-icon" aria-hidden="true">☾</span><span id="theme-label">다크 모드</span></button></div></header>
   <section class="intro"><div><div class="eyebrow">A MOMENT FOR YOURSELF</div><h1>나의 하루를 정돈하는 시간<span>.</span></h1><p>하루의 시작과 마무리, 익숙한 리추얼을 조금 더 간편하게.</p></div><div class="intro-art" aria-hidden="true">✳</div></section>
   <div class="notice"><span class="notice-icon">↗</span><div><strong>마지막 확인과 저장은 직접 해 주세요.</strong><p>CSV 문장으로 입력을 채웁니다. 기존 기록이 있으면 수정 화면으로 들어갑니다.</p></div><span class="pill">직접 저장</span></div>
   <div class="workspace-grid">
@@ -26,7 +26,12 @@
       </div><div class="name-label"><label for="names">함께할 동료 이름</label><span>1–3명</span></div>
       <input id="names" name="names" maxlength="120" placeholder="예: 홍길동, 김하늘" autocomplete="off" required aria-describedby="names-hint"><p id="names-hint" class="hint">이름 사이는 쉼표 또는 띄어쓰기로 구분해 주세요.</p>
       <div class="run-options"><label class="headless-toggle"><input id="headless" type="checkbox"><span><strong>헤드리스 실행</strong><small>새 Chrome 창 없이 입력 · 먼저 로그인해 주세요</small></span></label>
-      <div class="delay-setting"><label for="delay">입력·클릭 사이 딜레이</label><div><input id="delay" type="number" min="0" max="3000" step="1" value="300" required><span>ms</span></div><small>0~3000ms · 1000ms = 1초</small></div></div>
+      <div class="speed-setting"><div class="name-label"><span class="speed-heading">입력 속도</span></div><div class="speed-options" role="group" aria-label="입력 속도">
+        <label class="speed-option"><input type="radio" name="speed" value="humanize"><strong>Humanize</strong><small>6~12초 무작위 대기</small></label>
+        <label class="speed-option"><input type="radio" name="speed" value="instant" checked><strong>Instant</strong><small>추가 대기 없이 입력</small></label>
+        <label class="speed-option"><input type="radio" name="speed" value="custom"><strong>직접 설정</strong><small>원하는 간격 지정</small></label>
+      </div><p id="speed-hint" class="hint">입력·클릭·체크 전에 추가 대기 없이 진행합니다.</p></div>
+      <div id="custom-delay" class="delay-setting" hidden><label for="delay">입력·클릭 사이 딜레이</label><div><input id="delay" type="number" min="0" max="3000" step="1" value="300" disabled><span>ms</span></div><small>0~3000ms · 1000ms = 1초</small></div></div>
       <p id="mode-note" class="mode-note">기존 아침 리추얼의 호흡 단계는 시작 직후 종료됩니다.</p>
       <button id="start" class="button primary" type="submit"><span>리추얼 실행하기</span><span>→</span></button>
       </fieldset></form>

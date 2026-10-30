@@ -6,6 +6,7 @@ import contextlib
 import inspect
 import io
 import json
+import random
 import secrets
 from pathlib import Path
 import sys
@@ -310,15 +311,18 @@ async def login(page, headless=False):
 
 
 @contextlib.contextmanager
-def input_delay(milliseconds):
+def input_delay(milliseconds, speed_mode='custom'):
     # Patch the real Locator class in this isolated worker, preserving expect()
     # and chained locator types used by the unmodified automation scripts.
     from playwright.async_api import Locator
     originals = {name: getattr(Locator, name) for name in ('fill', 'click', 'check')}
     for name, original in originals.items():
         async def delayed(self, *args, _original=original, **kwargs):
-            if milliseconds:
-                await asyncio.sleep(milliseconds / 1000)
+            seconds = random.uniform(6.0, 12.0) if speed_mode == 'humanize' else 0 if speed_mode == 'instant' else milliseconds / 1000
+            if seconds:
+                if speed_mode == 'humanize':
+                    emit(message=f'Humanize · 다음 동작 전 {seconds:.1f}초 대기')
+                await asyncio.sleep(seconds)
             return await _original(self, *args, **kwargs)
         setattr(Locator, name, delayed)
     try:
@@ -356,9 +360,11 @@ async def fill_ritual(page, config, commands, automation=None):
     module = automation if automation is not None else load_automation(ROOT / ('main.py' if mode == 'morning' else 'close.py'))
     total = instrument(module, mode)
     delay = config.get('delay_ms', 300)
-    emit(message=f'입력·클릭 간 딜레이: {delay}ms')
+    speed_mode = config.get('speed_mode', 'custom')
+    label = {'humanize':'Humanize · 동작마다 6~12초 무작위 대기','instant':'Instant · 추가 대기 없음','custom':f'직접 설정 · 딜레이 {delay}ms'}[speed_mode]
+    emit(message=label)
     await ritual_menu(page, headless=config.get('headless', False))
-    with input_delay(delay):
+    with input_delay(delay, speed_mode):
         await module.find_button(page, config['names'])
     if not config.get('headless'):
         emit(status='review', phase='입력 완료 · Chrome에서 확인 후 직접 저장하세요', step=total,

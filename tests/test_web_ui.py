@@ -13,7 +13,7 @@ import threading
 import time
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock, call
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -76,12 +76,14 @@ class HttpTests(unittest.TestCase):
         self.assertNotIn(b'__CONTROL_TOKEN__', body)
         self.assertEqual(headers['Cache-Control'], 'no-store')
         self.assertIn("frame-ancestors 'none'", headers['Content-Security-Policy'])
-        for asset in ('/app.js', '/style.css'):
+        for asset in ('/app.js', '/style.css', '/theme.js'):
             self.assertEqual(self.request('GET', asset)[0], 200)
 
     def test_status_requires_token(self):
         self.assertEqual(self.request('GET', '/api/status', **{'X-Control-Token':''})[0], 403)
-        self.assertEqual(self.request('GET', '/api/status')[0], 200)
+        code,body,_ = self.request('GET', '/api/status')
+        self.assertEqual(code,200)
+        self.assertEqual(json.loads(body)['speed_modes'],['humanize','instant','custom'])
 
     def test_reject_foreign_origin_and_host(self):
         self.assertEqual(self.request('POST','/api/start','{}', Origin='https://evil.example')[0],403)
@@ -102,7 +104,7 @@ class HttpTests(unittest.TestCase):
     def test_dispatch_allowed_values(self):
         with patch.object(self.jobs, 'start', return_value={'status':'running'}) as start:
             self.assertEqual(self.request('POST','/api/start',json.dumps({'mode':'morning','names':'하늘, 바다'}))[0],200)
-            start.assert_called_once_with('morning',['하늘','바다'],False,300)
+            start.assert_called_once_with('morning',['하늘','바다'],False,300,'custom')
         self.assertEqual(self.request('POST','/api/stop','{}')[0],200)
 
     def test_options_and_save_guards(self):
@@ -111,7 +113,7 @@ class HttpTests(unittest.TestCase):
             self.assertEqual(self.request('POST','/api/start',json.dumps(payload))[0],400)
         with patch.object(self.jobs,'start',return_value={'status':'running'}) as start:
             self.assertEqual(self.request('POST','/api/start',json.dumps({'mode':'close','names':'test','headless':True,'delay_ms':1000}))[0],200)
-            start.assert_called_once_with('close',['test'],True,1000)
+            start.assert_called_once_with('close',['test'],True,1000,'custom')
         self.assertEqual(self.request('POST','/api/start',json.dumps({'mode':'login','headless':True}))[0],400)
         self.assertEqual(self.request('POST','/api/save','{}')[0],400)
         self.assertEqual(self.request('POST','/api/save','{}',Origin='https://evil.example')[0],403)
@@ -121,6 +123,53 @@ class HttpTests(unittest.TestCase):
         code, image, headers = self.request('GET','/api/preview')
         self.assertEqual((code,image),(200,b'jpeg-test'))
         self.assertEqual(headers['Content-Type'],'image/jpeg')
+
+    def test_speed_modes_are_validated_and_forwarded(self):
+        for speed in ('humanize','instant','custom'):
+            with patch.object(self.jobs,'start',return_value={'status':'running'}) as start:
+                code=self.request('POST','/api/start',json.dumps({'mode':'morning','names':'test','speed_mode':speed,'delay_ms':0}))[0]
+                self.assertEqual(code,200)
+                start.assert_called_once_with('morning',['test'],False,0,speed)
+        for invalid in (None,[],{},'slow',True):
+            self.assertEqual(self.request('POST','/api/start',json.dumps({'mode':'morning','names':'test','speed_mode':invalid}))[0],400)
+
+
+class SpeedTests(unittest.TestCase):
+    def test_humanize_samples_a_fresh_delay_for_every_action(self):
+        from playwright.async_api import Locator
+        original=AsyncMock()
+        sleep=AsyncMock()
+        async def actions():
+            await Locator.fill(None,'first')
+            await Locator.fill(None,'second')
+        with patch.object(Locator,'fill',original),patch.object(worker.asyncio,'sleep',sleep),patch.object(worker.random,'uniform',side_effect=[6.25,11.75]) as random_delay,patch.object(worker,'emit'):
+            with worker.input_delay(0,'humanize'):
+                asyncio.run(actions())
+            self.assertIs(Locator.fill,original)
+        self.assertEqual(sleep.await_args_list,[call(6.25),call(11.75)])
+        self.assertEqual(random_delay.call_args_list,[call(6.0,12.0),call(6.0,12.0)])
+        self.assertEqual(original.await_count,2)
+
+    def test_instant_adds_no_sleep_even_if_legacy_delay_is_set(self):
+        from playwright.async_api import Locator
+        original=AsyncMock()
+        with patch.object(Locator,'fill',original),patch.object(worker.asyncio,'sleep',new_callable=AsyncMock) as sleep,patch.object(worker.random,'uniform') as random_delay:
+            with worker.input_delay(3000,'instant'):
+                asyncio.run(Locator.fill(None,'text'))
+        original.assert_awaited_once()
+        sleep.assert_not_awaited()
+        random_delay.assert_not_called()
+
+    def test_humanize_wait_is_cancellable_before_typing(self):
+        from playwright.async_api import Locator
+        original=AsyncMock()
+        with patch.object(Locator,'fill',original),patch.object(worker.asyncio,'sleep',new_callable=AsyncMock) as sleep,patch.object(worker,'emit'):
+            sleep.side_effect=asyncio.CancelledError
+            with self.assertRaises(asyncio.CancelledError):
+                with worker.input_delay(0,'humanize'):
+                    asyncio.run(Locator.fill(None,'text'))
+            self.assertIs(Locator.fill,original)
+        original.assert_not_awaited()
 
 
 class JobTests(unittest.TestCase):
