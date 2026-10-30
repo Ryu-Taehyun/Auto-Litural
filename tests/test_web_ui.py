@@ -5,6 +5,8 @@ import importlib.util
 import io
 import json
 import os
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import threading
@@ -213,6 +215,37 @@ class Page:
 
 
 class AdapterTests(unittest.TestCase):
+    def test_dependencies_load_before_blocking_control_reader(self):
+        if not (ROOT/'main.py').exists():
+            self.skipTest('Requires the existing automation source.')
+        code = '''import asyncio,importlib.util,sys
+from pathlib import Path
+root=Path(sys.argv[1])
+s=importlib.util.spec_from_file_location('worker_probe',root/'web_ui/worker.py')
+w=importlib.util.module_from_spec(s);s.loader.exec_module(w)
+async def fake_execute(config,commands,automation):
+    assert automation is not None
+    assert hasattr(automation,'pd')
+    assert not automation.pd.read_csv(root/'csv/Title.csv',header=None).empty
+    w.emit(status='review',message='IMPORT_ORDER_OK')
+w.execute=fake_execute
+asyncio.run(w.run({'mode':'morning','names':['test']}))
+'''
+        # Keep stdin open and idle, exactly as the live server does while the
+        # control reader waits. A regression hangs at the native NumPy import.
+        proc=subprocess.Popen([sys.executable,'-u','-c',code,str(ROOT)],stdin=subprocess.PIPE,
+                              stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
+                              env={**os.environ,'PYTHONIOENCODING':'utf-8'})
+        try:
+            proc.wait(timeout=12)
+            output=proc.stdout.read().decode('utf-8',errors='replace')
+            self.assertEqual(proc.returncode,0,output)
+            self.assertIn('IMPORT_ORDER_OK',output)
+        finally:
+            if proc.poll() is None:
+                proc.kill();proc.wait()
+            proc.stdin.close();proc.stdout.close()
+
     def test_existing_portal_tab_is_reused_before_tutorial_or_login(self):
         def page(url):
             return SimpleNamespace(url=url,is_closed=lambda:False)

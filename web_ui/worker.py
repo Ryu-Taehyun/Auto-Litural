@@ -6,6 +6,7 @@ import contextlib
 import inspect
 import io
 import json
+import secrets
 from pathlib import Path
 import sys
 import threading
@@ -109,7 +110,7 @@ async def headless_page(chromium, source):
     if not authenticated(source.url):
         raise RuntimeError('로그인한 리추얼 탭이 없습니다. 로그인 열기로 로그인을 완료한 뒤 헤드리스를 실행하세요.')
     origin = f'{parsed.scheme}://{parsed.netloc}'
-    state = await source.context.storage_state(indexed_db=True)
+    state = await export_storage(source)
     state['origins'] = [entry for entry in state.get('origins', []) if entry['origin'] == origin]
     state['cookies'] = [cookie for cookie in state.get('cookies', [])
                         if parsed.hostname == cookie['domain'].lstrip('.') or
@@ -128,6 +129,52 @@ async def headless_page(chromium, source):
         yield page
     finally:
         await hidden.close()
+
+
+async def export_storage(source):
+    """Register existing CDP origins using a background, locally fulfilled page.
+
+    A new CDP connection may not know origins from tabs opened by an earlier
+    connection, so storage_state can omit their localStorage and IndexedDB.
+    """
+    context = source.context
+    parsed = urlsplit(source.url)
+    origin = f'{parsed.scheme}://{parsed.netloc}'
+    state = await context.storage_state(indexed_db=True)
+    if not any(entry['origin'] == origin for entry in state.get('origins', [])):
+        session = await context.browser.new_browser_cdp_session()
+        page_session = await context.new_cdp_session(source)
+        info = await page_session.send('Target.getTargetInfo')
+        await page_session.detach()
+        probe_url = origin + '/__auto_litural_session_' + secrets.token_hex(8)
+        target = None
+
+        async def local_probe(route):
+            await route.fulfill(status=200, content_type='text/html', body='<!doctype html><title>Local session snapshot</title>')
+
+        await context.route(probe_url, local_probe)
+        try:
+            options = {'url': 'about:blank', 'background': True, 'newWindow': False}
+            context_id = info.get('targetInfo', {}).get('browserContextId')
+            if context_id:
+                options['browserContextId'] = context_id
+            async with context.expect_page(timeout=10000) as pending:
+                target = await session.send('Target.createTarget', options)
+            probe = await pending.value
+            await probe.goto(probe_url, wait_until='domcontentloaded', timeout=10000)
+            state = await context.storage_state(indexed_db=True)
+        finally:
+            if target:
+                with contextlib.suppress(Exception):
+                    await session.send('Target.closeTarget', {'targetId': target['targetId']})
+            await context.unroute(probe_url, local_probe)
+            await session.detach()
+    entry = next((entry for entry in state.get('origins', []) if entry['origin'] == origin), None)
+    if entry is None:
+        raise RuntimeError('기존 로그인 탭의 저장소를 복사하지 못했습니다. 로그인 Chrome을 닫고 저장 프로필로 헤드리스를 다시 실행하세요.')
+    # Read from the existing authenticated document as well, never from a blank tab.
+    entry['localStorage'] = await source.evaluate('() => Object.entries(localStorage).map(([name,value])=>({name,value}))')
+    return state
 
 
 @contextlib.asynccontextmanager
@@ -304,9 +351,9 @@ async def ritual_menu(page, headless=False):
         raise RuntimeError('로그인 화면에서 학습 메뉴를 찾지 못했습니다. 결과 화면이나 열린 Chrome에서 로그인 상태와 사이트 메뉴 변경 여부를 확인하세요.') from None
 
 
-async def fill_ritual(page, config, commands):
+async def fill_ritual(page, config, commands, automation=None):
     mode = config['mode']
-    module = load_automation(ROOT / ('main.py' if mode == 'morning' else 'close.py'))
+    module = automation if automation is not None else load_automation(ROOT / ('main.py' if mode == 'morning' else 'close.py'))
     total = instrument(module, mode)
     delay = config.get('delay_ms', 300)
     emit(message=f'입력·클릭 간 딜레이: {delay}ms')
@@ -332,7 +379,7 @@ async def fill_ritual(page, config, commands):
          message='사용자 요청으로 저장 버튼을 눌렀습니다. 결과 화면에서 성공 여부를 확인하세요.')
 
 
-async def execute(config, commands):
+async def execute(config, commands, automation=None):
     import ui_chrome as chrome
     from playwright.async_api import async_playwright
     headless = config.get('headless', False)
@@ -345,7 +392,7 @@ async def execute(config, commands):
             emit(message='로그인 Chrome이 닫혀 있어 저장된 전용 프로필을 헤드리스로 직접 사용합니다.')
             async with persistent_headless_page(p.chromium, chrome.profile_path()) as page:
                 await login(page, headless=True)
-                await fill_ritual(page, config, commands)
+                await fill_ritual(page, config, commands, automation)
             return
         browser = await p.chromium.connect_over_cdp(chrome.CDP_URL, timeout=15000)
         if not browser.contexts:
@@ -358,7 +405,7 @@ async def execute(config, commands):
             emit(message='기존 로그인 탭의 쿠키·localStorage·sessionStorage·IndexedDB를 메모리로 복사합니다.')
             async with headless_page(p.chromium, selected) as page:
                 await login(page, headless=True)
-                await fill_ritual(page, config, commands)
+                await fill_ritual(page, config, commands, automation)
             return
         page = selected if selected is not None else await context.new_page()
         await page.bring_to_front()
@@ -366,11 +413,19 @@ async def execute(config, commands):
         if config['mode'] == 'login':
             emit(status='logged_in', phase='로그인 확인 완료', message='로그인 확인이 끝났습니다. 리추얼을 실행할 수 있습니다.')
             return
-        await fill_ritual(page, config, commands)
+        await fill_ritual(page, config, commands, automation)
         # Exiting Playwright disconnects the client; never browser.close().
 
 
 async def run(config):
+    # Windows/NumPy native imports can block while another thread owns the
+    # stdin read lock. Load the CLI declarations and dependencies before the
+    # daemon control reader starts and before connecting the browser driver.
+    automation = None
+    if config['mode'] != 'login':
+        emit(status='running', phase='자동 입력 모듈 준비 중', message='입력용 라이브러리를 먼저 준비합니다.')
+        automation = load_automation(ROOT / ('main.py' if config['mode'] == 'morning' else 'close.py'))
+        emit(message='입력용 라이브러리 준비가 완료되었습니다.')
     loop = asyncio.get_running_loop()
     stopped = asyncio.Event()
     commands = asyncio.Queue()
@@ -388,7 +443,7 @@ async def run(config):
                 return
 
     threading.Thread(target=read_stop, daemon=True).start()
-    task = asyncio.create_task(execute(config, commands))
+    task = asyncio.create_task(execute(config, commands, automation))
     stop_task = asyncio.create_task(stopped.wait())
     try:
         done, _ = await asyncio.wait((task, stop_task), timeout=900, return_when=asyncio.FIRST_COMPLETED)
