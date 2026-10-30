@@ -1,6 +1,6 @@
 # Auto-Litural
 
-**사용해서 로그. LLM에 탐지되도 전 책임 안집니다...**
+**단순 웹크롤링 연습 프로젝트이며 실제 사용시 발생하는 불이익은 책임 안집니다.**
 
 [ALEPH](https://aleph-omega.vercel.app)의 아침·마무리 리추얼 입력을 CSV 문장으로 채우는 Windows용 Python Playwright 자동화입니다. 기존 콘솔 실행과 로컬 웹 UI를 함께 제공합니다.
 
