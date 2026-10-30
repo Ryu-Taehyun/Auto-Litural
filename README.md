@@ -138,3 +138,5 @@ Windows에서 중지 신호를 기다리는 입력 스레드를 먼저 시작한
 별도 터미널 버전은 [Auto-Litural-Terminal](Auto-Litural-Terminal/README.md) 폴더에 있습니다. 해당 폴더의 start.cmd를 실행하세요. 보라색 shadow 배너, 1~5번 메뉴, 설정 검증·실행 전 경고, Humanize/Instant/Custom 속도와 Ctrl+C 중지를 제공합니다. 설정 작업 후 화면을 정리하며 실행 결과는 Enter로 확인한 뒤 메뉴로 돌아갑니다. 최종 저장은 Chrome에서 직접 수행합니다.
 
 터미널 검사 15개가 통과했으며 실제 사이트 입력·저장은 이 추가 작업에서 검증하지 않았습니다.
+
+터미널 메뉴 구분선도 보라색으로 표시합니다. Start Write 옆의 상태는 설정이 유효하면 노란색 STABLE, 미설정·오류가 있으면 빨간색 UNSTABLE입니다. 미설정 항목의 NOT SET 표시는 제거했습니다. 이 상태는 설정 검사 결과이며 로그인·연결 상태를 검사하는 표시는 아닙니다.

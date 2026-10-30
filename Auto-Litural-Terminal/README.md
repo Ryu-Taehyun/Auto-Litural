@@ -19,6 +19,8 @@ cd "압축을 푼 Auto-Litural-Terminal 폴더 경로"
 
 ## 메뉴
 
+배너와 메뉴 구분선은 보라색입니다. Start Write 옆에 2~4번 설정이 모두 유효하면 노란색 `STABLE`, 미설정이나 오류가 있으면 빨간색 `UNSTABLE`을 표시합니다. 이 표시는 설정 검사 결과이며 실제 로그인이나 네트워크 연결 상태를 보증하지 않습니다. 미설정 항목에는 `NOT SET`과 빈 대괄호를 표시하지 않습니다.
+
 ```text
 1 : Start Write
 2 : Morning / Finish

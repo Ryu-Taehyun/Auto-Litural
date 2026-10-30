@@ -40,6 +40,6 @@ def validate(settings):
 
 
 def speed_label(settings):
-    if not isinstance(settings.speed,str): return 'NOT SET'
+    if not isinstance(settings.speed,str): return ''
     return {'humanize':'Humanize · 6~12초 무작위 대기', 'instant':'Instant · 추가 대기 없음',
-            'custom':f'Custom · {settings.delay_ms}ms'}.get(settings.speed, 'NOT SET')
+            'custom':f'Custom · {settings.delay_ms}ms'}.get(settings.speed, '')

@@ -17,10 +17,13 @@ class Console:
         self.output = output_fn
         self.color = color
 
-    def write(self, message='', tone=''):
-        colors = {'purple':'\033[95m','blue':'\033[94m','warn':'\033[93m','good':'\033[92m'}
+    def styled(self, message, tone=''):
+        colors = {'purple':'\033[95m','blue':'\033[94m','warn':'\033[93m','error':'\033[91m','good':'\033[92m'}
         prefix = colors.get(tone, '') if self.color else ''
-        self.output(prefix + str(message) + ('\033[0m' if prefix else ''))
+        return prefix + str(message) + ('\033[0m' if prefix else '')
+
+    def write(self, message='', tone=''):
+        self.output(self.styled(message, tone))
 
     def ask(self, message):
         return self.input(message).strip()
@@ -48,14 +51,18 @@ class Menu:
 
     def show(self):
         s = self.settings
-        self.ui.write('\n' + '─' * 68, 'blue')
-        self.ui.write('  1 : Start Write')
-        ritual = 'Morning' if s.ritual == 'morning' else 'Finish' if s.ritual == 'finish' else 'NOT SET'
-        self.ui.write(f'  2 : Morning / Finish       [{ritual}]')
-        self.ui.write(f'  3 : Writing Speed / Type   [{speed_label(s)}]')
-        self.ui.write(f'  4 : Partner Name           [{", ".join(s.partners) if isinstance(s.partners,list) and all(isinstance(n,str) for n in s.partners) and s.partners else "NOT SET"}]')
+        errors = validate(s)
+        self.ui.write('\n' + '─' * 68, 'purple')
+        status = self.ui.styled('UNSTABLE' if errors else 'STABLE', 'error' if errors else 'warn')
+        self.ui.write(f'  1 : Start Write            [{status}]')
+        ritual = 'Morning' if s.ritual == 'morning' else 'Finish' if s.ritual == 'finish' else ''
+        rows = [(2, 'Morning / Finish', ritual), (3, 'Writing Speed / Type', speed_label(s)),
+                (4, 'Partner Name', ', '.join(s.partners) if 4 not in errors else '')]
+        for number, label, value in rows:
+            suffix = f'[{value}]' if value and number not in errors else ''
+            self.ui.write(f'  {number} : {label:<24}{suffix}'.rstrip())
         self.ui.write('  5 : Exit')
-        self.ui.write('─' * 68, 'blue')
+        self.ui.write('─' * 68, 'purple')
 
     def choose_ritual(self):
         while True:
