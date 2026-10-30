@@ -133,10 +133,6 @@ Windows에서 중지 신호를 기다리는 입력 스레드를 먼저 시작한
 검증에서 Humanize가 매 동작마다 별도 무작위 값을 선택하는 것, Instant가 추가 대기를 생략하는 것, 대기 중 취소와 API 옵션 검증을 확인했습니다. 화면에서는 다크/라이트 전환·선택 유지·속도별 안내·실행 경고 표시를 실제 자동화가 차단된 미리보기로 확인했습니다. Humanize는 문장 자체를 다시 쓰는 기능이 아니라 입력 타이밍을 조절하는 옵션입니다.
 
 
-## Auto-Litural-Terminal
+## 터미널 버전
 
-별도 터미널 버전은 [Auto-Litural-Terminal](Auto-Litural-Terminal/README.md) 폴더에 있습니다. 해당 폴더의 start.cmd를 실행하세요. 보라색 shadow 배너, 1~5번 메뉴, 설정 검증·실행 전 경고, Humanize/Instant/Custom 속도와 Ctrl+C 중지를 제공합니다. 설정 작업 후 화면을 정리하며 실행 결과는 Enter로 확인한 뒤 메뉴로 돌아갑니다. 최종 저장은 Chrome에서 직접 수행합니다.
-
-터미널 검사 15개가 통과했으며 실제 사이트 입력·저장은 이 추가 작업에서 검증하지 않았습니다.
-
-터미널 메뉴 구분선도 보라색으로 표시합니다. Start Write 옆의 상태는 설정이 유효하면 노란색 STABLE, 미설정·오류가 있으면 빨간색 UNSTABLE입니다. 미설정 항목의 NOT SET 표시는 제거했습니다. 이 상태는 설정 검사 결과이며 로그인·연결 상태를 검사하는 표시는 아닙니다.
+터미널 버전은 별도 저장소 [Auto-Litural-Terminal](https://github.com/Ryu-Taehyun/Auto-Litural-Terminal)로 이전했습니다. 해당 저장소의 start.cmd로 실행할 수 있습니다. 보라색 BLOCK 배너와 실행 설정 상태 표시를 제공합니다. 터미널 검사 15개가 통과했으며 이번 이전에서 실제 사이트 입력·저장은 실행하지 않았습니다.
